@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -16,12 +16,13 @@
 
 package com.rabbitmq.client.test.server;
 
-import static org.junit.Assert.fail;
+import static com.rabbitmq.client.test.TestUtils.safeDelete;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.util.concurrent.TimeoutException;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
@@ -41,8 +42,7 @@ public class ExclusiveQueueDurability extends BrokerTestCase {
         return false;
     }
 
-    void verifyQueueMissing(Channel channel, String queueName)
-            throws IOException {
+    void verifyQueueMissing(Channel channel, String queueName) {
         try {
             channel.queueDeclare(queueName, false, false, false, null);
         } catch (IOException ioe) {
@@ -54,16 +54,22 @@ public class ExclusiveQueueDurability extends BrokerTestCase {
     // 1) connection and queue are on same node, node restarts -> queue
     // should no longer exist
     @Test public void connectionQueueSameNode() throws Exception {
-        channel.queueDeclare("scenario1", true, true, false, null);
-        restartPrimaryAbruptly();
-        verifyQueueMissing(channel, "scenario1");
+        String queueName = generateQueueName();
+        safeDelete(connection, queueName);
+        try {
+            channel.queueDeclare(queueName, true, true, false, null);
+            restartPrimaryAbruptly();
+            verifyQueueMissing(channel, queueName);
+        } finally {
+            safeDelete(connection, queueName);
+        }
     }
 
     private void restartPrimaryAbruptly() throws IOException, TimeoutException {
         connection = null;
         channel = null;
         bareRestart();
-        setUp();
+        setUp(this.testInfo);
     }
 
     /*
@@ -80,4 +86,5 @@ public class ExclusiveQueueDurability extends BrokerTestCase {
      * tied to nodes, so one can't engineer a situation in which a connection
      * and its exclusive queue are on different nodes.
      */
+
 }

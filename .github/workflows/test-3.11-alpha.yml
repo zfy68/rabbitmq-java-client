@@ -1,0 +1,60 @@
+name: Test against RabbitMQ 3.11 alpha
+
+on:
+  schedule:
+    - cron: '0 4 ? * SUN,THU'
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  RABBITMQ_IMAGE_TAG: 3.11
+  RABBITMQ_IMAGE: pivotalrabbitmq/rabbitmq-dev
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Checkout tls-gen
+        uses: actions/checkout@v3
+        with:
+          repository: rabbitmq/tls-gen
+          path: './tls-gen'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+      - name: Start cluster
+        run: ci/start-cluster.sh
+      - name: Get dependencies
+        run: make deps
+      - name: Test with NIO
+        run: |
+          ./mvnw verify -P '!setup-test-cluster,use-nio' -Drabbitmqctl.bin=DOCKER:rabbitmq \
+            -Dtest-broker.A.nodename=rabbit@$(hostname) -Dtest-broker.B.nodename=hare@$(hostname) \
+            -Dmaven.javadoc.skip=true \
+            -Dtest-client-cert.password= -Dtest-tls-certs.dir=rabbitmq-configuration/tls \
+            --no-transfer-progress
+      - name: Test with blocking IO
+        run: |
+          ./mvnw verify -P '!setup-test-cluster' -Drabbitmqctl.bin=DOCKER:rabbitmq \
+          -Dtest-broker.A.nodename=rabbit@$(hostname) -Dtest-broker.B.nodename=hare@$(hostname) \
+          -Dmaven.javadoc.skip=true \
+          -Dtest-client-cert.password= -Dtest-tls-certs.dir=rabbitmq-configuration/tls \
+          --no-transfer-progress
+      - name: Stop broker A
+        run: docker stop rabbitmq && docker rm rabbitmq
+      - name: Stop broker B
+        run: docker stop hare && docker rm hare

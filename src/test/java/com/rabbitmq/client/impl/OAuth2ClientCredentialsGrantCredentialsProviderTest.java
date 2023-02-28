@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2019-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -15,6 +15,7 @@
 
 package com.rabbitmq.client.impl;
 
+import com.google.gson.Gson;
 import com.rabbitmq.client.test.TestUtils;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
@@ -27,9 +28,9 @@ import org.eclipse.jetty.server.*;
 import org.eclipse.jetty.server.handler.AbstractHandler;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
@@ -62,7 +63,7 @@ public class OAuth2ClientCredentialsGrantCredentialsProviderTest {
         return javaVersion != null && javaVersion.startsWith("13.");
     }
 
-    @Before
+    @BeforeEach
     public void init() {
         if (isJava13()) {
             // for Java 13.0.7, see https://github.com/bcgit/bc-java/issues/941
@@ -70,7 +71,7 @@ public class OAuth2ClientCredentialsGrantCredentialsProviderTest {
         }
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception {
         if (isJava13()) {
             System.setProperty("keystore.pkcs12.keyProtectionAlgorithm", "");
@@ -195,12 +196,42 @@ public class OAuth2ClientCredentialsGrantCredentialsProviderTest {
     }
 
     @Test
-    public void parseToken() {
+    public void parseTokenDefault() {
         OAuth2ClientCredentialsGrantCredentialsProvider provider = new OAuth2ClientCredentialsGrantCredentialsProvider(
                 "http://localhost:8080/uaa/oauth/token/",
                 "rabbit_client", "rabbit_secret",
                 "client_credentials"
         );
+
+        String accessToken = "18c1b1dfdda04382a8bcc14d077b71dd";
+        int expiresIn = 43199;
+        String response = sampleJsonToken(accessToken, expiresIn);
+
+        OAuth2ClientCredentialsGrantCredentialsProvider.Token token = provider.parseToken(response);
+        assertThat(token.getAccess()).isEqualTo("18c1b1dfdda04382a8bcc14d077b71dd");
+        assertThat(token.getTimeBeforeExpiration()).isBetween(Duration.ofSeconds(expiresIn - 10), Duration.ofSeconds(expiresIn + 1));
+    }
+
+    @Test
+    public void parseTokenGson() {
+        Gson gson = new Gson();
+        OAuth2ClientCredentialsGrantCredentialsProvider provider = new OAuth2ClientCredentialsGrantCredentialsProvider(
+            "http://localhost:8080/uaa/oauth/token/",
+            "rabbit_client", "rabbit_secret",
+            "client_credentials"
+        ) {
+            @Override
+            protected Token parseToken(String response) {
+                try {
+                    Map<?, ?> map = gson.fromJson(response, Map.class);
+                    int expiresIn = ((Number) map.get("expires_in")).intValue();
+                    Instant receivedAt = Instant.now();
+                    return new Token(map.get("access_token").toString(), expiresIn, receivedAt);
+                } catch (Exception e) {
+                    throw new OAuthTokenManagementException("Error while parsing OAuth 2 token", e);
+                }
+            }
+        };
 
         String accessToken = "18c1b1dfdda04382a8bcc14d077b71dd";
         int expiresIn = 43199;

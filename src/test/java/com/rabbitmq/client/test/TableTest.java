@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -17,7 +17,9 @@
 package com.rabbitmq.client.test;
 
 import com.rabbitmq.client.impl.*;
-import org.junit.Test;
+import java.sql.Timestamp;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.*;
 import java.math.BigDecimal;
@@ -25,12 +27,12 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TableTest
 {
 
-    public byte [] marshal(Map<String, Object> table) 
+    public byte [] marshal(Map<String, Object> table)
         throws IOException
     {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -59,10 +61,14 @@ public class TableTest
         return new Date((System.currentTimeMillis()/1000)*1000);
     }
 
+    private static Timestamp timestamp() {
+        return new Timestamp((System.currentTimeMillis()/1000)*1000);
+    }
+
     @Test public void loop()
         throws IOException
     {
-        Map<String, Object> table = new HashMap<String, Object>();
+        Map<String, Object> table = new HashMap<>();
         table.put("a", 1);
         assertEquals(table, unmarshal(marshal(table)));
 
@@ -77,5 +83,11 @@ public class TableTest
 
         table.put("e", -126);
         assertEquals(table, unmarshal(marshal(table)));
+
+        Timestamp timestamp = timestamp();
+        table.put("f", timestamp);
+        Map<String, Object> tableWithTimestampAsDate = new HashMap<>(table);
+        tableWithTimestampAsDate.put("f", new Date(timestamp.getTime()));
+        assertEquals(tableWithTimestampAsDate, unmarshal(marshal(table)));
     }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -16,12 +16,12 @@
 
 package com.rabbitmq.client.test.functional;
 
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.io.IOException;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.MessageProperties;
@@ -58,8 +58,8 @@ public class PerMessageTTL extends TTLHandling {
         QueueingConsumer c = new QueueingConsumer(channel);
         channel.basicConsume(TTL_QUEUE_NAME, c);
 
-        assertNotNull("Message unexpectedly expired", c.nextDelivery(100));
-        assertNull("Message should have been expired!!", c.nextDelivery(100));
+        assertNotNull(c.nextDelivery(100), "Message unexpectedly expired");
+        assertNull(c.nextDelivery(100), "Message should have been expired!!");
     }
 
     @Test public void restartingExpiry() throws Exception {
@@ -71,11 +71,10 @@ public class PerMessageTTL extends TTLHandling {
                         .builder()
                         .expiration(expiryDelay)
                         .build(), new byte[]{});
-        long expiryStartTime = System.currentTimeMillis();
         restart();
         Thread.sleep(Integer.parseInt(expiryDelay));
         try {
-            assertNull("Message should have expired after broker restart", get());
+            assertNull(get(), "Message should have expired after broker restart");
         } finally {
             deleteQueue(TTL_QUEUE_NAME);
         }

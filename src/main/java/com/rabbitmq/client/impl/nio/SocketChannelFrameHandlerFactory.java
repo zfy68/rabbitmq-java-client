@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2022 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -21,6 +21,9 @@ import com.rabbitmq.client.SslContextFactory;
 import com.rabbitmq.client.impl.AbstractFrameHandlerFactory;
 import com.rabbitmq.client.impl.FrameHandler;
 import com.rabbitmq.client.impl.TlsUtils;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,12 +58,11 @@ public class SocketChannelFrameHandlerFactory extends AbstractFrameHandlerFactor
 
     private final List<NioLoopContext> nioLoopContexts;
 
-    public SocketChannelFrameHandlerFactory(int connectionTimeout, NioParams nioParams, boolean ssl, SslContextFactory sslContextFactory)
-        throws IOException {
+    public SocketChannelFrameHandlerFactory(int connectionTimeout, NioParams nioParams, boolean ssl, SslContextFactory sslContextFactory) {
         super(connectionTimeout, null, ssl);
         this.nioParams = new NioParams(nioParams);
         this.sslContextFactory = sslContextFactory;
-        this.nioLoopContexts = new ArrayList<NioLoopContext>(this.nioParams.getNbIoThreads());
+        this.nioLoopContexts = new ArrayList<>(this.nioParams.getNbIoThreads());
         for (int i = 0; i < this.nioParams.getNbIoThreads(); i++) {
             this.nioLoopContexts.add(new NioLoopContext(this, this.nioParams));
         }
@@ -83,7 +85,7 @@ public class SocketChannelFrameHandlerFactory extends AbstractFrameHandlerFactor
                 }
             }
 
-            SocketAddress address = new InetSocketAddress(addr.getHost(), portNumber);
+            SocketAddress address = addr.toInetSocketAddress(portNumber);
             // No Sonar: the channel is closed in case of error and it cannot
             // be closed here because it's part of the state of the connection
             // to be returned.
@@ -93,16 +95,25 @@ public class SocketChannelFrameHandlerFactory extends AbstractFrameHandlerFactor
                 nioParams.getSocketChannelConfigurator().configure(channel);
             }
 
-            channel.connect(address);
+            channel.socket().connect(address, this.connectionTimeout);
+
 
             if (ssl) {
+                int initialSoTimeout = channel.socket().getSoTimeout();
+                channel.socket().setSoTimeout(this.connectionTimeout);
                 sslEngine.beginHandshake();
                 try {
-                    boolean handshake = SslEngineHelper.doHandshake(channel, sslEngine);
+                    ReadableByteChannel wrappedReadChannel = Channels.newChannel(
+                        channel.socket().getInputStream());
+                    WritableByteChannel wrappedWriteChannel = Channels.newChannel(
+                        channel.socket().getOutputStream());
+                    boolean handshake = SslEngineHelper.doHandshake(
+                        wrappedWriteChannel, wrappedReadChannel, sslEngine);
                     if (!handshake) {
                         LOGGER.error("TLS connection failed");
                         throw new SSLException("TLS handshake failed");
                     }
+                    channel.socket().setSoTimeout(initialSoTimeout);
                 } catch (SSLHandshakeException e) {
                     LOGGER.error("TLS connection failed: {}", e.getMessage());
                     throw e;

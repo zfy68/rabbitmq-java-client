@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -596,7 +596,9 @@ public class AMQConnection extends ShutdownNotifierComponent implements Connecti
         ChannelManager cm = _channelManager;
         if (cm == null) return null;
         Channel channel = cm.createChannel(this, channelNumber);
-        metricsCollector.newChannel(channel);
+        if (channel != null) {
+            metricsCollector.newChannel(channel);
+        }
         return channel;
     }
 
@@ -607,7 +609,9 @@ public class AMQConnection extends ShutdownNotifierComponent implements Connecti
         ChannelManager cm = _channelManager;
         if (cm == null) return null;
         Channel channel = cm.createChannel(this);
-        metricsCollector.newChannel(channel);
+        if (channel != null) {
+            metricsCollector.newChannel(channel);
+        }
         return channel;
     }
 
@@ -741,8 +745,8 @@ public class AMQConnection extends ShutdownNotifierComponent implements Connecti
 
     /** private API */
     public void handleHeartbeatFailure() {
-        Exception ex = new MissedHeartbeatException("Heartbeat missing with heartbeat = " +
-            _heartbeat + " seconds");
+        Exception ex = new MissedHeartbeatException("Detected missed server heartbeats, heartbeat interval: " +
+            _heartbeat + " seconds, RabbitMQ node hostname: " + this.getHostAddress());
         try {
             _exceptionHandler.handleUnexpectedConnectionDriverException(this, ex);
             shutdown(null, false, ex, true);
@@ -837,7 +841,7 @@ public class AMQConnection extends ShutdownNotifierComponent implements Connecti
         // of the heartbeat setting in setHeartbeat above.
         if (++_missedHeartbeats > (2 * 4)) {
             throw new MissedHeartbeatException("Heartbeat missing with heartbeat = " +
-                                               _heartbeat + " seconds");
+                                               _heartbeat + " seconds, for " + this.getHostAddress());
         }
     }
 

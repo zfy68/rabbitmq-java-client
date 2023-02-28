@@ -1,7 +1,10 @@
 # RabbitMQ Java Client
 
+[![Build Status](https://github.com/rabbitmq/rabbitmq-java-client/actions/workflows/test-3.11-stable.yml/badge.svg)](https://github.com/rabbitmq/rabbitmq-java-client/actions/workflows/test-3.11-stable.yml)
+
+
 This repository contains source code of the [RabbitMQ Java client](https://www.rabbitmq.com/api-guide.html).
-The client is maintained by the [RabbitMQ team at Pivotal](https://github.com/rabbitmq/).
+The client is maintained by the [RabbitMQ team at VMware](https://github.com/rabbitmq/).
 
 
 ## Dependency (Maven Artifact)
@@ -25,14 +28,14 @@ They require Java 8 or higher.
 <dependency>
     <groupId>com.rabbitmq</groupId>
     <artifactId>amqp-client</artifactId>
-    <version>5.14.0</version>
+    <version>5.16.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ``` groovy
-compile 'com.rabbitmq:amqp-client:5.14.0'
+compile 'com.rabbitmq:amqp-client:5.16.0'
 ```
 
 #### 4.x Series
@@ -89,7 +92,7 @@ make deps
 ./mvnw clean package -Dmaven.test.skip -P '!setup-test-cluster'
 ```
 
-### Launching Tests with the Broker Running In a Docker Container
+### Launching Tests with the Broker Running in a Docker Container
 
 Run the broker:
 
@@ -102,7 +105,7 @@ Launch "essential" tests (takes about 10 minutes):
 ```
 ./mvnw verify -P '!setup-test-cluster' \
     -Drabbitmqctl.bin=DOCKER:rabbitmq \
-    -Dit.test=ClientTests,FunctionalTests,ServerTests
+    -Dit.test=ClientTestSuite,FunctionalTestSuite,ServerTestSuite
 ```
 
 Launch a single test:
@@ -122,7 +125,7 @@ system property must point to the `rabbitmqctl` program:
 ./mvnw verify -P '!setup-test-cluster' \
        -Dtest-broker.A.nodename=rabbit@$(hostname) \
        -Drabbitmqctl.bin=/path/to/rabbitmqctl \
-       -Dit.test=ClientTests,FunctionalTests,ServerTests
+       -Dit.test=ClientTestSuite,FunctionalTestSuite,ServerTestSuite
 ```
 
 To launch a single test:
@@ -151,7 +154,7 @@ for the support timeline of this library.
 
 This package, the RabbitMQ Java client library, is [triple-licensed](https://www.rabbitmq.com/api-guide.html#license) under
 the Mozilla Public License 2.0 ("MPL"), the GNU General Public License
-version 2 ("GPL") and the Apache License version 2 ("ASL").
+version 2 ("GPL") and the Apache License version 2 ("AL").
 
 This means that the user can consider the library to be licensed under **any of the licenses from the list** above.
 For example, you may choose the Apache Public License 2.0 and include this client into a commercial product.

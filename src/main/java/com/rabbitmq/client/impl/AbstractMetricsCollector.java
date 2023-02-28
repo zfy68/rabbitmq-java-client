@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -81,12 +81,14 @@ public abstract class AbstractMetricsCollector implements MetricsCollector {
 
     @Override
     public void newChannel(final Channel channel) {
-        try {
-            incrementChannelCount(channel);
-            channel.addShutdownListener(cause -> closeChannel(channel));
-            connectionState(channel.getConnection()).channelState.put(channel.getChannelNumber(), new ChannelState(channel));
-        } catch(Exception e) {
-            LOGGER.info("Error while computing metrics in newChannel: " + e.getMessage());
+        if (channel != null) {
+            try {
+                incrementChannelCount(channel);
+                channel.addShutdownListener(cause -> closeChannel(channel));
+                connectionState(channel.getConnection()).channelState.put(channel.getChannelNumber(), new ChannelState(channel));
+            } catch(Exception e) {
+                LOGGER.info("Error while computing metrics in newChannel: " + e.getMessage());
+            }
         }
     }
 
@@ -134,7 +136,6 @@ public abstract class AbstractMetricsCollector implements MetricsCollector {
         try {
             updateChannelStateAfterAckReject(channel, deliveryTag, multiple, GET_UNCONFIRMED_DTAGS, markMessagePublishAcknowledgedAction);
         } catch (Exception e) {
-            e.printStackTrace();
             LOGGER.info("Error while computing metrics in basicPublishAck: " + e.getMessage());
         }
     }
@@ -267,9 +268,11 @@ public abstract class AbstractMetricsCollector implements MetricsCollector {
                     }
                 }
             } else {
-                if (dtags.apply(channelState).remove(deliveryTag)) {
-                    action.run();
-                }
+                dtags.apply(channelState).remove(deliveryTag);
+                // we always run the action, whether the set contains the delivery tag
+                // the collection may not contain the tag yet, if the ack/confirm arrives very fast
+                // so checking the result of Collection#remove may not be exact.
+                action.run();
             }
         } finally {
             channelState.lock.unlock();
@@ -339,8 +342,8 @@ public abstract class AbstractMetricsCollector implements MetricsCollector {
 
         final Lock lock = new ReentrantLock();
 
-        final Set<Long> unackedMessageDeliveryTags = new HashSet<Long>();
-        final Set<String> consumersWithManualAck = new HashSet<String>();
+        final Set<Long> unackedMessageDeliveryTags = new HashSet<>();
+        final Set<String> consumersWithManualAck = new HashSet<>();
         final Set<Long> unconfirmedMessageDeliveryTags = new HashSet<>();
 
         final Channel channel;

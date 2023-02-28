@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -20,13 +20,20 @@ import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.MetricsCollector;
 import com.rabbitmq.client.impl.AbstractMetricsCollector;
 import com.rabbitmq.client.impl.MicrometerMetricsCollector;
+import com.rabbitmq.client.impl.OpenTelemetryMetricsCollector;
 import com.rabbitmq.client.impl.StandardMetricsCollector;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import io.opentelemetry.sdk.metrics.data.LongPointData;
+import io.opentelemetry.sdk.metrics.data.MetricData;
+import io.opentelemetry.sdk.testing.junit4.OpenTelemetryRule;
+import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -35,22 +42,27 @@ import static org.mockito.Mockito.when;
 /**
  *
  */
-@RunWith(Parameterized.class)
 public class MetricsCollectorTest {
 
-    @Parameterized.Parameters
+    @RegisterExtension
+    static final OpenTelemetryExtension otelTesting = OpenTelemetryExtension.create();
+
     public static Object[] data() {
         // need to resort to a factory, as this method is called only once
         // if creating the collector instance, it's reused across the test methods
         // and this doesn't work (it cannot be reset)
-        return new Object[] { new StandardMetricsCollectorFactory(), new MicrometerMetricsCollectorFactory() };
+        return new Object[]{new StandardMetricsCollectorFactory(), new MicrometerMetricsCollectorFactory(), new OpenTelemetryMetricsCollectorFactory()};
     }
 
-    @Parameterized.Parameter
-    public MetricsCollectorFactory factory;
+    @BeforeEach
+    public void reset() {
+        // reset metrics
+        otelTesting.clearMetrics();
+    }
 
-    @Test
-    public void basicGetAndAck() {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void basicGetAndAck(MetricsCollectorFactory factory) {
         AbstractMetricsCollector metrics = factory.create();
         Connection connection = mock(Connection.class);
         when(connection.getId()).thenReturn("connection-1");
@@ -81,7 +93,9 @@ public class MetricsCollectorTest {
         assertThat(acknowledgedMessages(metrics)).isEqualTo(1L+2L+1L);
     }
 
-    @Test public void basicConsumeAndAck() {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void basicConsumeAndAck(MetricsCollectorFactory factory) {
         AbstractMetricsCollector metrics = factory.create();
         Connection connection = mock(Connection.class);
         when(connection.getId()).thenReturn("connection-1");
@@ -120,7 +134,9 @@ public class MetricsCollectorTest {
         assertThat(acknowledgedMessages(metrics)).isEqualTo(1L+2L+1L);
     }
 
-    @Test public void publishingAndPublishingFailures() {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void publishingAndPublishingFailures(MetricsCollectorFactory factory) {
         AbstractMetricsCollector metrics = factory.create();
         Channel channel = mock(Channel.class);
 
@@ -148,7 +164,9 @@ public class MetricsCollectorTest {
         assertThat(publishedMessages(metrics)).isEqualTo(2L);
     }
 
-    @Test public void publishingAcknowledgements() {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void publishingAcknowledgements(MetricsCollectorFactory factory) {
         AbstractMetricsCollector metrics = factory.create();
         Connection connection = mock(Connection.class);
         when(connection.getId()).thenReturn("connection-1");
@@ -170,9 +188,9 @@ public class MetricsCollectorTest {
         metrics.basicPublishAck(channel, 2, false);
         assertThat(publishAck(metrics)).isEqualTo(2L);
 
-        // this is idempotent
+        // it's not idempotent
         metrics.basicPublishAck(channel, 2, false);
-        assertThat(publishAck(metrics)).isEqualTo(2L);
+        assertThat(publishAck(metrics)).isEqualTo(3L);
 
         // multi-ack
         metrics.basicPublish(channel, 3);
@@ -180,21 +198,23 @@ public class MetricsCollectorTest {
         metrics.basicPublish(channel, 5);
         // ack-ing in the middle
         metrics.basicPublishAck(channel, 4, false);
-        assertThat(publishAck(metrics)).isEqualTo(3L);
+        assertThat(publishAck(metrics)).isEqualTo(4L);
         // ack-ing several at once
         metrics.basicPublishAck(channel, 5, true);
-        assertThat(publishAck(metrics)).isEqualTo(5L);
+        assertThat(publishAck(metrics)).isEqualTo(6L);
 
         // ack-ing non existent doesn't affect metrics
         metrics.basicPublishAck(channel, 123, true);
-        assertThat(publishAck(metrics)).isEqualTo(5L);
+        assertThat(publishAck(metrics)).isEqualTo(6L);
 
         // cleaning stale state doesn't affect the metric
         metrics.cleanStaleState();
-        assertThat(publishAck(metrics)).isEqualTo(5L);
+        assertThat(publishAck(metrics)).isEqualTo(6L);
     }
 
-    @Test public void publishingNotAcknowledgements() {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void publishingNotAcknowledgements(MetricsCollectorFactory factory) {
         AbstractMetricsCollector metrics = factory.create();
         Connection connection = mock(Connection.class);
         when(connection.getId()).thenReturn("connection-1");
@@ -235,7 +255,9 @@ public class MetricsCollectorTest {
         assertThat(publishNack(metrics)).isEqualTo(5L);
     }
 
-    @Test public void publishingUnrouted() {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void publishingUnrouted(MetricsCollectorFactory factory) {
         AbstractMetricsCollector metrics = factory.create();
         Channel channel = mock(Channel.class);
         // begins with no messages not-acknowledged
@@ -251,7 +273,9 @@ public class MetricsCollectorTest {
         assertThat(publishUnrouted(metrics)).isEqualTo(2L);
     }
 
-    @Test public void cleanStaleState() {
+    @ParameterizedTest
+    @MethodSource("data")
+    public void cleanStaleState(MetricsCollectorFactory factory) {
         AbstractMetricsCollector metrics = factory.create();
         Connection openConnection = mock(Connection.class);
         when(openConnection.getId()).thenReturn("connection-1");
@@ -295,72 +319,108 @@ public class MetricsCollectorTest {
     long publishAck(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getPublishAcknowledgedMessages().getCount();
-        } else {
-            return (long) ((MicrometerMetricsCollector) metrics).getAckedPublishedMessages().count();
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
+            return (long)((MicrometerMetricsCollector) metrics).getAckedPublishedMessages().count();
+        }
+        else {
+            return getOpenTelemetryCounterMeterValue("rabbitmq.acknowledged_published");
         }
     }
 
     long publishNack(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getPublishNotAcknowledgedMessages().getCount();
-        } else {
-            return (long) ((MicrometerMetricsCollector) metrics).getNackedPublishedMessages().count();
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
+            return (long)((MicrometerMetricsCollector) metrics).getNackedPublishedMessages().count();
+        }
+        else {
+            return getOpenTelemetryCounterMeterValue("rabbitmq.not_acknowledged_published");
         }
     }
 
     long publishUnrouted(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getPublishUnroutedMessages().getCount();
-        } else {
-            return (long) ((MicrometerMetricsCollector) metrics).getUnroutedPublishedMessages().count();
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
+            return (long)((MicrometerMetricsCollector) metrics).getUnroutedPublishedMessages().count();
+        }
+        else {
+            return getOpenTelemetryCounterMeterValue("rabbitmq.unrouted_published");
         }
     }
 
     long publishedMessages(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getPublishedMessages().getCount();
-        } else {
-            return (long) ((MicrometerMetricsCollector) metrics).getPublishedMessages().count();
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
+            return (long)((MicrometerMetricsCollector) metrics).getPublishedMessages().count();
+        }
+        else {
+            return getOpenTelemetryCounterMeterValue("rabbitmq.published");
         }
     }
 
     long failedToPublishMessages(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getFailedToPublishMessages().getCount();
-        } else {
-            return (long) ((MicrometerMetricsCollector) metrics).getFailedToPublishMessages().count();
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
+            return (long)((MicrometerMetricsCollector) metrics).getFailedToPublishMessages().count();
+        }
+        else {
+            return getOpenTelemetryCounterMeterValue("rabbitmq.failed_to_publish");
         }
     }
 
     long consumedMessages(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getConsumedMessages().getCount();
-        } else {
-            return (long) ((MicrometerMetricsCollector) metrics).getConsumedMessages().count();
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
+            return (long)((MicrometerMetricsCollector) metrics).getConsumedMessages().count();
+        }
+        else {
+            return getOpenTelemetryCounterMeterValue("rabbitmq.consumed");
         }
     }
 
     long acknowledgedMessages(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getAcknowledgedMessages().getCount();
-        } else {
-            return (long) ((MicrometerMetricsCollector) metrics).getAcknowledgedMessages().count();
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
+            return (long)((MicrometerMetricsCollector) metrics).getAcknowledgedMessages().count();
+        }
+        else {
+            return getOpenTelemetryCounterMeterValue("rabbitmq.acknowledged");
         }
     }
 
     long connections(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getConnections().getCount();
-        } else {
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
             return ((MicrometerMetricsCollector) metrics).getConnections().get();
+        }
+        else {
+            return ((OpenTelemetryMetricsCollector)metrics).getConnections().get();
         }
     }
 
     long channels(MetricsCollector metrics) {
         if (metrics instanceof StandardMetricsCollector) {
             return ((StandardMetricsCollector) metrics).getChannels().getCount();
-        } else {
+        }
+        else if (metrics instanceof MicrometerMetricsCollector) {
             return ((MicrometerMetricsCollector) metrics).getChannels().get();
+        }
+        else {
+            return ((OpenTelemetryMetricsCollector)metrics).getChannels().get();
         }
     }
 
@@ -382,4 +442,23 @@ public class MetricsCollectorTest {
         }
     }
 
+    static class OpenTelemetryMetricsCollectorFactory implements MetricsCollectorFactory {
+        @Override
+        public AbstractMetricsCollector create() {
+            return new OpenTelemetryMetricsCollector(otelTesting.getOpenTelemetry());
+        }
+    }
+
+    static long getOpenTelemetryCounterMeterValue(String name) {
+        // open telemetry metrics
+        List<MetricData> metrics = otelTesting.getMetrics();
+        // metric value
+        return metrics.stream()
+            .filter(metric -> metric.getName().equals(name))
+            .flatMap(metric -> metric.getData().getPoints().stream())
+            .map(point -> (LongPointData)point)
+            .map(LongPointData::getValue)
+            .mapToLong(value -> value)
+            .sum();
+    }
 }

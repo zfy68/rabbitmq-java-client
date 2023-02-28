@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -20,17 +20,19 @@ import com.rabbitmq.client.AMQP.BasicProperties;
 import com.rabbitmq.client.test.BrokerTestCase;
 import com.rabbitmq.client.test.TestUtils;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 
+import static com.rabbitmq.client.test.TestUtils.safeDelete;
 import static com.rabbitmq.client.test.TestUtils.waitAtMost;
 import static java.time.Duration.ofSeconds;
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class DeadLetterExchange extends BrokerTestCase {
+
     public static final String DLX = "dead.letter.exchange";
     private static final String DLX_ARG = "x-dead-letter-exchange";
     private static final String DLX_RK_ARG = "x-dead-letter-routing-key";
@@ -344,21 +346,28 @@ public class DeadLetterExchange extends BrokerTestCase {
         // messages in pure-expiry cycles. So we just need to test that
         // non-pure-expiry cycles do not drop messages.
 
-        declareQueue("queue1", "", "queue2", null, 1);
-        declareQueue("queue2", "", "queue1", null, 0);
+        String queue1 = generateQueueName();
+        String queue2 = generateQueueName();
+        try {
+            declareQueue(queue1, "", queue2, null, 1);
+            declareQueue(queue2, "", queue1, null, 0);
 
-        channel.basicPublish("", "queue1", MessageProperties.BASIC, "".getBytes());
-        final CountDownLatch latch = new CountDownLatch(10);
-        channel.basicConsume("queue2", false,
-            new DefaultConsumer(channel) {
-                @Override
-                public void handleDelivery(String consumerTag, Envelope envelope,
-                                           AMQP.BasicProperties properties, byte[] body) throws IOException {
-                    channel.basicReject(envelope.getDeliveryTag(), false);
-                    latch.countDown();
-                }
-            });
-        assertTrue(latch.await(10, TimeUnit.SECONDS));
+            channel.basicPublish("", queue1, MessageProperties.BASIC, "".getBytes());
+            final CountDownLatch latch = new CountDownLatch(10);
+            channel.basicConsume(queue2, false,
+                new DefaultConsumer(channel) {
+                    @Override
+                    public void handleDelivery(String consumerTag, Envelope envelope,
+                        AMQP.BasicProperties properties, byte[] body) throws IOException {
+                        channel.basicReject(envelope.getDeliveryTag(), false);
+                        latch.countDown();
+                    }
+                });
+            assertTrue(latch.await(10, TimeUnit.SECONDS));
+        } finally {
+            safeDelete(connection, queue1);
+            safeDelete(connection, queue2);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -415,8 +424,7 @@ public class DeadLetterExchange extends BrokerTestCase {
                 return responseRefeference.get() != null;
         });
         GetResponse getResponse = responseRefeference.get();
-        assertNotNull("Message not dead-lettered",
-            getResponse);
+        assertNotNull(getResponse, "Message not dead-lettered");
         assertEquals("test message", new String(getResponse.getBody()));
         BasicProperties props = getResponse.getProps();
         Map<String, Object> headers = props.getHeaders();
@@ -450,7 +458,7 @@ public class DeadLetterExchange extends BrokerTestCase {
                 return responseRefeference.get() != null;
             });
         getResponse = responseRefeference.get();
-        assertNotNull("Message not dead-lettered", getResponse);
+        assertNotNull(getResponse, "Message not dead-lettered");
         assertEquals("test message", new String(getResponse.getBody()));
         headers = getResponse.getProps().getHeaders();
         assertNotNull(headers);
@@ -479,7 +487,7 @@ public class DeadLetterExchange extends BrokerTestCase {
             });
         getResponse = responseRefeference.get();
 
-        assertNotNull("Message not dead-lettered", getResponse);
+        assertNotNull(getResponse, "Message not dead-lettered");
         assertEquals("test message", new String(getResponse.getBody()));
         headers = getResponse.getProps().getHeaders();
         assertNotNull(headers);
@@ -578,14 +586,14 @@ public class DeadLetterExchange extends BrokerTestCase {
         long epsilon = TTL / 5;
         for (int i = 0; i < count; i++) {
             byte[] body = c.nextDelivery(TTL + TTL + latency + epsilon);
-            assertNotNull("message #" + i + " did not expire", body);
+            assertNotNull(body, "message #" + i + " did not expire");
             long now = System.currentTimeMillis();
             long publishTime = Long.valueOf(new String(body));
             long targetTime = publishTime + TTL + latency;
-            assertTrue("expiry outside bounds (+/- " + epsilon + "): " +
-                       (now - targetTime),
-                       (now >= targetTime - epsilon) &&
-                       (now <= targetTime + epsilon));
+            assertTrue((now >= targetTime - epsilon) &&
+                       (now <= targetTime + epsilon),
+                "expiry outside bounds (+/- " + epsilon + "): " +
+                    (now - targetTime));
         }
     }
 
@@ -657,13 +665,12 @@ public class DeadLetterExchange extends BrokerTestCase {
         for(int x = 0; x < n; x++) {
             GetResponse getResponse =
                 channel.basicGet(queue, true);
-            assertNotNull("Messages not dead-lettered (" + (n-x) + " left)",
-                          getResponse);
+            assertNotNull(getResponse, "Messages not dead-lettered (" + (n-x) + " left)");
             assertEquals("test message", new String(getResponse.getBody()));
             withResponse.process(getResponse);
         }
         GetResponse getResponse = channel.basicGet(queue, true);
-        assertNull("expected empty queue", getResponse);
+        assertNull(getResponse, "expected empty queue");
     }
 
     @SuppressWarnings("unchecked")

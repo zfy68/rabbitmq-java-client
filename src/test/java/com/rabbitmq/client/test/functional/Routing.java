@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -16,11 +16,13 @@
 
 package com.rabbitmq.client.test.functional;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.fail;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.fail;
 
+import com.rabbitmq.client.test.TestUtils.BrokerVersion;
+import com.rabbitmq.client.test.TestUtils.BrokerVersionAtLeast;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.AlreadyClosedException;
@@ -170,6 +172,7 @@ public class Routing extends BrokerTestCase
         spec.put("h1", "12345");
         spec.put("h2", "bar");
         spec.put("h3", null);
+        spec.put("x-key-1", "bindings starting with x- get filtered out");
         spec.put("x-match", "all");
         channel.queueBind(Q1, "amq.match", "", spec);
         spec.put("x-match", "any");
@@ -226,6 +229,10 @@ public class Routing extends BrokerTestCase
         map.put("h2", "quux");
         channel.basicPublish("amq.match", "", props.build(), "8".getBytes());
 
+        map.clear();
+        map.put("x-key-1", "bindings starting with x- get filtered out");
+        channel.basicPublish("amq.match", "", props.build(), "9".getBytes());
+
         checkGet(Q1, true); // 4
         checkGet(Q1, false);
 
@@ -237,6 +244,48 @@ public class Routing extends BrokerTestCase
         checkGet(Q2, true); // 6
         checkGet(Q2, true); // 7
         checkGet(Q2, true); // 8
+        checkGet(Q2, false);
+    }
+
+    @Test
+    @BrokerVersionAtLeast(BrokerVersion.RABBITMQ_3_10)
+    public void headersWithXRouting() throws Exception {
+        Map<String, Object> spec = new HashMap<String, Object>();
+        spec.put("x-key-1", "value-1");
+        spec.put("x-key-2", "value-2");
+        spec.put("x-match", "all-with-x");
+        channel.queueBind(Q1, "amq.match", "", spec);
+        spec.put("x-match", "any-with-x");
+        channel.queueBind(Q2, "amq.match", "", spec);
+
+        AMQP.BasicProperties.Builder props = new AMQP.BasicProperties.Builder();
+        channel.basicPublish("amq.match", "", props.build(), "0".getBytes());
+
+        Map<String, Object> map = new HashMap<String, Object>();
+        props.headers(map);
+
+        map.clear();
+        map.put("x-key-1", "value-1");
+        channel.basicPublish("amq.match", "", props.build(), "1".getBytes());
+
+        map.clear();
+        map.put("x-key-1", "value-1");
+        map.put("x-key-2", "value-2");
+        channel.basicPublish("amq.match", "", props.build(), "2".getBytes());
+
+        map.clear();
+        map.put("x-key-1", "value-1");
+        map.put("x-key-2", "value-2");
+        map.put("x-key-3", "value-3");
+        channel.basicPublish("amq.match", "", props.build(), "3".getBytes());
+
+        checkGet(Q1, true); // 2
+        checkGet(Q1, true); // 3
+        checkGet(Q1, false);
+
+        checkGet(Q2, true); // 1
+        checkGet(Q2, true); // 2
+        checkGet(Q2, true); // 3
         checkGet(Q2, false);
     }
 

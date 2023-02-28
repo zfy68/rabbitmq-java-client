@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -15,12 +15,12 @@
 
 package com.rabbitmq.client.test.server;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
 import java.util.concurrent.*;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import com.rabbitmq.client.test.functional.ClusteredTestBase;
 
@@ -31,16 +31,20 @@ import com.rabbitmq.client.test.functional.ClusteredTestBase;
 public class EffectVisibilityCrossNodeTest extends ClusteredTestBase {
     private final String[] queues = new String[QUEUES];
 
+    ExecutorService executorService;
+
     @Override
     protected void createResources() throws IOException {
         for (int i = 0; i < queues.length ; i++) {
             queues[i] = alternateChannel.queueDeclare("", false, false, true, null).getQueue();
             alternateChannel.queueBind(queues[i], "amq.fanout", "");
         }
+        executorService = Executors.newSingleThreadExecutor();
     }
 
     @Override
     protected void releaseResources() throws IOException {
+        executorService.shutdownNow();
         for (int i = 0; i < queues.length ; i++) {
             alternateChannel.queueDelete(queues[i]);
         }
@@ -53,24 +57,33 @@ public class EffectVisibilityCrossNodeTest extends ClusteredTestBase {
     private static final byte[] msg = "".getBytes();
 
     @Test public void effectVisibility() throws Exception {
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
-        try {
-            Future<Void> task = executorService.submit(() -> {
-                for (int i = 0; i < BATCHES; i++) {
-                    Thread.sleep(10); // to avoid flow control for the connection
-                    for (int j = 0; j < MESSAGES_PER_BATCH; j++) {
-                        channel.basicPublish("amq.fanout", "", null, msg);
-                    }
-                    for (int j = 0; j < queues.length; j++) {
-                        assertEquals(MESSAGES_PER_BATCH, channel.queuePurge(queues[j]).getMessageCount());
-                    }
+    // the test bulk is asynchronous because this test has a history of hanging
+    Future<Void> task =
+        executorService.submit(
+            () -> {
+              for (int i = 0; i < BATCHES; i++) {
+                Thread.sleep(10); // to avoid flow control for the connection
+                for (int j = 0; j < MESSAGES_PER_BATCH; j++) {
+                  channel.basicPublish("amq.fanout", "", null, msg);
                 }
-                return null;
+                for (int j = 0; j < queues.length; j++) {
+                  String queue = queues[j];
+                  long timeout = 10 * 1000;
+                  long waited = 0;
+                  int purged = 0;
+                  while (waited < timeout) {
+                    purged += channel.queuePurge(queue).getMessageCount();
+                    if (purged == MESSAGES_PER_BATCH) {
+                      break;
+                    }
+                    Thread.sleep(10);
+                    waited += 10;
+                  }
+                  assertEquals(MESSAGES_PER_BATCH, purged, "Queue " + queue + " should have been purged after 10 seconds");
+                }
+              }
+              return null;
             });
             task.get(1, TimeUnit.MINUTES);
-        } finally {
-            executorService.shutdownNow();
-            executorService.awaitTermination(1, TimeUnit.SECONDS);
-        }
     }
 }

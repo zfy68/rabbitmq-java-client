@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2021 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -13,47 +13,28 @@
 // If you have any questions regarding licensing, please contact us at
 // info@rabbitmq.com.
 
-
 package com.rabbitmq.client.test;
 
 import com.rabbitmq.client.*;
 import com.rabbitmq.client.impl.nio.NioParams;
 import com.rabbitmq.tools.Host;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.rules.TestRule;
-import org.junit.rules.TestWatcher;
-import org.junit.runner.Description;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestInfo;
 
 import java.io.IOException;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
-import static org.junit.Assert.*;
-import static org.junit.Assume.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class BrokerTestCase {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(BrokerTestCase.class);
+    private boolean ha = false;
 
-    @Rule
-    public TestRule watcher = new TestWatcher() {
-        protected void starting(Description description) {
-            LOGGER.info(
-                "Starting test: {}.{} (nio? {})",
-                description.getTestClass().getSimpleName(), description.getMethodName(), TestUtils.USE_NIO
-            );
-        }
-
-        @Override
-        protected void finished(Description description) {
-            LOGGER.info("Test finished: {}.{}", description.getTestClass().getSimpleName(), description.getMethodName());
-        }
-    };
+    protected volatile TestInfo testInfo;
 
     protected ConnectionFactory connectionFactory = newConnectionFactory();
 
@@ -77,16 +58,19 @@ public class BrokerTestCase {
     protected Connection connection;
     protected Channel channel;
 
-    @Before public void setUp()
-            throws IOException, TimeoutException {
-        assumeTrue(shouldRun());
+    @BeforeEach
+    public void setUp(TestInfo testInfo) throws IOException, TimeoutException {
+
+
+        Assumptions.assumeTrue(shouldRun());
+        this.testInfo = testInfo;
         openConnection();
         openChannel();
 
         createResources();
     }
 
-    @After public void tearDown()
+    @AfterEach public void tearDown(TestInfo testInfo)
             throws IOException, TimeoutException {
         if(shouldRun()) {
             closeChannel();
@@ -132,9 +116,9 @@ public class BrokerTestCase {
 
     protected void restart()
             throws IOException, TimeoutException {
-        tearDown();
+        tearDown(this.testInfo);
         bareRestart();
-        setUp();
+        setUp(this.testInfo);
     }
 
     protected void bareRestart()
@@ -339,11 +323,24 @@ public class BrokerTestCase {
     }
 
     protected String generateQueueName() {
-        return "queue" + UUID.randomUUID().toString();
+        return name("queue", this.testInfo.getTestClass().get(),
+            this.testInfo.getTestMethod().get().getName());
     }
 
     protected String generateExchangeName() {
-        return "exchange" + UUID.randomUUID().toString();
+        return name("exchange", this.testInfo.getTestClass().get(),
+            this.testInfo.getTestMethod().get().getName());
+    }
+
+    private static String name(String prefix, Class<?> testClass, String testMethodName) {
+        String uuid = UUID.randomUUID().toString();
+        return String.format(
+            "%s_%s_%s%s",
+            prefix, testClass.getSimpleName(), testMethodName, uuid.substring(uuid.length() / 2));
+    }
+
+    protected boolean ha() {
+        return this.ha;
     }
 
 }

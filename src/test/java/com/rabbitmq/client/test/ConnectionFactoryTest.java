@@ -1,4 +1,4 @@
-// Copyright (c) 2007-2020 VMware, Inc. or its affiliates.  All rights reserved.
+// Copyright (c) 2007-2023 VMware, Inc. or its affiliates.  All rights reserved.
 //
 // This software, the RabbitMQ Java client library, is triple-licensed under the
 // Mozilla Public License 2.0 ("MPL"), the GNU General Public License version 2
@@ -17,7 +17,7 @@ package com.rabbitmq.client.test;
 
 import com.rabbitmq.client.*;
 import com.rabbitmq.client.impl.*;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.List;
@@ -96,7 +96,7 @@ public class ConnectionFactoryTest {
     }
 
     @Test
-    public void shouldNotUseDnsResolutionWhenOneAddressAndNoTls() throws Exception {
+    public void shouldUseDnsResolutionWhenOneAddressAndNoTls() throws Exception {
         AMQConnection connection = mock(AMQConnection.class);
         AtomicReference<AddressResolver> addressResolver = new AtomicReference<>();
 
@@ -123,11 +123,11 @@ public class ConnectionFactoryTest {
 
         doNothing().when(connection).start();
         connectionFactory.newConnection();
-        assertThat(addressResolver.get()).isNotNull().isInstanceOf(ListAddressResolver.class);
+        assertThat(addressResolver.get()).isNotNull().isInstanceOf(DnsRecordIpAddressResolver.class);
     }
 
     @Test
-    public void shouldNotUseDnsResolutionWhenOneAddressAndTls() throws Exception {
+    public void shouldUseDnsResolutionWhenOneAddressAndTls() throws Exception {
         AMQConnection connection = mock(AMQConnection.class);
         AtomicReference<AddressResolver> addressResolver = new AtomicReference<>();
 
@@ -156,7 +156,7 @@ public class ConnectionFactoryTest {
         connectionFactory.useSslProtocol();
         connectionFactory.newConnection();
 
-        assertThat(addressResolver.get()).isNotNull().isInstanceOf(ListAddressResolver.class);
+        assertThat(addressResolver.get()).isNotNull().isInstanceOf(DnsRecordIpAddressResolver.class);
     }
 
     @Test
